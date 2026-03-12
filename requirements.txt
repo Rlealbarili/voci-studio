@@ -1,0 +1,30 @@
+# voci-studio dependencies
+# Instalar com: pip install -r requirements.txt
+# PyTorch deve ser instalado separadamente com o índice correto para sua GPU:
+#   pip install torch==2.5.1+cu121 torchaudio==2.5.1+cu121 --index-url https://download.pytorch.org/whl/cu121
+
+# Áudio
+numpy
+scipy
+soundfile
+librosa==0.11.0
+pydub
+pedalboard
+soxr
+noisereduce
+
+# RVC / Applio
+faiss-cpu
+transformers==4.44.2
+einops
+torchcrepe
+torchfcpe
+
+# Utilitários
+PyYAML
+tqdm
+requests
+ffmpeg-python
+
+# WebUI (Applio)
+gradio==6.5.1

@@ -1,0 +1,61 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Projeto: Colônia Cecília — Museu
+# Áudio: "Viva l'Anarchia" — grito anarquista + coro (1890)
+# ─────────────────────────────────────────────────────────────────────────────
+
+project: colonia_cecilia
+description: "Recreação sonora do grito anarquista da Colônia Cecília, 1890"
+output_file: viva_anarchia_FINAL.wav
+
+# Voz solo — grito principal "Viva l'Anarchia!"
+solo:
+  converted_wav: solo_deandre.wav   # gerado por: scripts/convert.py --input input/take_06.wav --model DeAndre --out output/solo_deandre.wav
+
+# Coro — multidão respondendo "VIVA"
+crowd:
+  voices:
+    - model: DeAndre
+      converted_wav: crowd_deandre.wav
+      pitch_fine: +0.3
+      reverb_wet: 0.09
+
+    - model: Celentano
+      converted_wav: crowd_Celentano.wav
+      pitch_fine: 0.0
+      reverb_wet: 0.08
+
+    - model: Tenco
+      converted_wav: crowd_Tenco.wav
+      pitch_fine: -0.3
+      reverb_wet: 0.10
+
+    - model: Battiato
+      converted_wav: crowd_Battiato.wav
+      pitch_fine: +0.5
+      reverb_wet: 0.12
+
+    - model: Morandi
+      converted_wav: crowd_Morandi.wav
+      pitch_fine: -0.5
+      reverb_wet: 0.09
+
+    - model: Blanco
+      converted_wav: crowd_Blanco.wav
+      pitch_fine: +0.2
+      reverb_wet: 0.11
+
+# Parâmetros de mixing
+mixing:
+  output_sr:  44100    # Hz — qualidade CD
+  pause_ms:   500      # silêncio dramático entre solo e multidão
+  stagger_ms: 90       # delay entre cada voz da cascata
+
+  solo_reverb:
+    room_size: 0.18
+    damping:   0.70
+    wet_level: 0.04
+    dry_level: 0.96
+
+  crowd_reverb:
+    room_size: 0.30
+    damping:   0.50

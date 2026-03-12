@@ -1,0 +1,39 @@
+# Dados de projeto (grandes demais para versionar)
+models/
+!models/.gitkeep
+
+input/
+!input/.gitkeep
+
+output/
+!output/.gitkeep
+
+# Ambientes virtuais
+venv/
+env/
+.venv/
+Applio/env/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# Applio (clonado em setup, não versionado aqui)
+Applio/
+
+# Logs
+*.log
+nohup.out
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
