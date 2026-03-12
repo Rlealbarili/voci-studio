@@ -4,8 +4,8 @@
 # Acesso local:           http://localhost:7897
 # Acesso remoto (tunnel): ssh -L 7897:localhost:7897 usuario@servidor
 
-BASE=/opt/cogep-lab/data/RVC
-export CUDA_VISIBLE_DEVICES=1
+BASE=${BASE:-"$HOME/voci-studio-server"}
+export CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-1}
 
 echo "Iniciando Applio WebUI..."
 echo "Acesse: http://localhost:7897"

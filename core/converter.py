@@ -11,8 +11,11 @@ import pathlib
 import shutil
 
 
-# Localização padrão do Applio no servidor de produção
-DEFAULT_APPLIO_DIR = pathlib.Path('/opt/cogep-lab/data/RVC/Applio')
+# Localização do Applio — configurar via variável de ambiente APPLIO_DIR
+# Exemplo: export APPLIO_DIR=/caminho/para/Applio
+DEFAULT_APPLIO_DIR = pathlib.Path(
+    os.environ.get('APPLIO_DIR', './Applio')
+)
 
 
 class VoiceConverter:

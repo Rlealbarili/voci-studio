@@ -3,7 +3,8 @@
 # Testado em Ubuntu 22.04, CUDA 12.2, Python 3.10
 
 set -e
-BASE=/opt/cogep-lab/data/RVC
+# Diretório de instalação — sobrescreva com: BASE=/seu/caminho bash setup/install.sh
+BASE=${BASE:-"$HOME/voci-studio-server"}
 LOG=$BASE/install.log
 
 echo "=== voci-studio setup ===" | tee $LOG
