@@ -71,42 +71,52 @@ def update_task_db(task_id: str, status: str, error_text: str = None, output_url
             db.commit()
     except Exception as e:
         print(f"Error updating DB: {e}")
+        raise e  # Força o Celery a marcar a task original como falha
     finally:
         db.close()
 
+def resolve_and_validate_url(url: str):
+    parsed = urlparse(url)
+    if parsed.scheme not in ["http", "https"]:
+        raise ValueError("SSRF: Somente HTTP/HTTPS")
+    host = parsed.hostname
+    if not host:
+        raise ValueError("SSRF: Hostname inválido")
+        
+    try:
+        ip = socket.gethostbyname(host)
+    except socket.gaierror:
+        raise ValueError("SSRF: Falha de resolução DNS")
+        
+    ip_obj = ipaddress.ip_address(ip)
+    if ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local or ip_obj.is_multicast:
+        raise ValueError(f"SSRF: Range de IP bloqueado {ip}")
+        
+    # Replace host with IP to prevent DNS Rebinding
+    new_netloc = parsed.netloc.replace(host, ip, 1)
+    safe_url = parsed._replace(netloc=new_netloc).geturl()
+    
+    return safe_url, host
+
 class NoRedirectHandler(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
-        if not is_safe_url(newurl):
-            raise ValueError(f"SSRF Security: Redirecionamento bloqueado ({newurl})")
-        return super().redirect_request(req, fp, code, msg, headers, newurl)
-
-def is_safe_url(url: str) -> bool:
-    try:
-        parsed = urlparse(url)
-        if parsed.scheme not in ["http", "https"]: return False
-        host = parsed.hostname
-        if not host: return False
-        
-        try:
-            ip = socket.gethostbyname(host)
-        except socket.gaierror:
-            return False
-            
-        ip_obj = ipaddress.ip_address(ip)
-        if ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local or ip_obj.is_multicast:
-            return False
-        return True
-    except:
-        return False
+        safe_url, host = resolve_and_validate_url(newurl)
+        # O urllib Request novo já será criado via super(), então injetamos depois
+        return super().redirect_request(req, fp, code, msg, headers, safe_url)
 
 def download_file(url: str, dest_path: str):
-    if not is_safe_url(url) and (url.startswith("http://") or url.startswith("https://")):
-        raise ValueError(f"SSRF Security: Host bloqueado para download ({url})")
-    
     if url.startswith("http://") or url.startswith("https://"):
+        safe_url, host_header = resolve_and_validate_url(url)
+        
         opener = urllib.request.build_opener(NoRedirectHandler())
-        req = urllib.request.Request(url, headers={'User-Agent': 'Voci-Studio/1.0'})
-        with opener.open(req, timeout=30) as response, open(dest_path, 'wb') as out_file:
+        req = urllib.request.Request(safe_url, headers={'User-Agent': 'Voci-Studio/1.0', 'Host': host_header})
+        
+        import ssl
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        
+        with opener.open(req, timeout=30, context=ctx) as response, open(dest_path, 'wb') as out_file:
             import shutil
             shutil.copyfileobj(response, out_file)
     else:
