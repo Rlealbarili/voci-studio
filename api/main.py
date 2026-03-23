@@ -7,7 +7,10 @@ from pydantic import BaseModel
 from typing import List, Optional
 from celery.result import AsyncResult
 from api.worker import celery_app, convert_audio_task, mix_audio_task
-from api.database import init_db
+from api.database import init_db, get_db
+from api.models import InferenceHistory
+from fastapi import Depends
+from sqlalchemy.orm import Session
 
 app = FastAPI(title="Voci-Studio SaaS API", description="SaaS API for RVC inference powered by Celery")
 
@@ -27,22 +30,44 @@ class MixRequest(BaseModel):
     stagger_ms: int = 200
 
 @app.post("/api/v1/convert", status_code=202)
-def convert_audio_endpoint(req: ConvertRequest):
+def convert_audio_endpoint(req: ConvertRequest, db: Session = Depends(get_db)):
     task = convert_audio_task.delay(
         input_url=req.input_url,
         model_name=req.model_name,
         pitch=req.pitch
     )
+    
+    # Save to InferenceHistory
+    db_history = InferenceHistory(
+        task_id=task.id,
+        task_type="convert",
+        status="PENDING",
+        started_at=None
+    )
+    db.add(db_history)
+    db.commit()
+    
     return {"message": "Conversão iniciada", "task_id": task.id}
 
 @app.post("/api/v1/mix", status_code=202)
-def mix_audio_endpoint(req: MixRequest):
+def mix_audio_endpoint(req: MixRequest, db: Session = Depends(get_db)):
     task = mix_audio_task.delay(
         solo_url=req.solo_url,
         crowd_urls=req.crowd_urls,
         pause_ms=req.pause_ms,
         stagger_ms=req.stagger_ms
     )
+    
+    # Save to InferenceHistory
+    db_history = InferenceHistory(
+        task_id=task.id,
+        task_type="mix",
+        status="PENDING",
+        started_at=None
+    )
+    db.add(db_history)
+    db.commit()
+    
     return {"message": "Mixagem iniciada", "task_id": task.id}
 
 @app.get("/api/v1/status/{task_id}")
