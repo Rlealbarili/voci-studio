@@ -4,7 +4,11 @@ from dotenv import load_dotenv
 load_dotenv()
 import time
 import urllib.request
+from urllib.parse import urlparse
+from datetime import datetime
 from celery import Celery
+from api.database import SessionLocal
+from api.models import InferenceHistory
 import pathlib
 from core.converter import VoiceConverter
 from core.mixer import process_solo, process_crowd_voice, compose
@@ -42,7 +46,49 @@ def get_converter():
         converter = VoiceConverter()
     return converter
 
+def update_task_db(task_id: str, status: str, error_text: str = None, output_url: str = None):
+    db = SessionLocal()
+    try:
+        history = db.query(InferenceHistory).filter(InferenceHistory.task_id == task_id).first()
+        if history:
+            history.status = status
+            history.gpu_id = os.environ.get("CUDA_VISIBLE_DEVICES", "0")
+            if status in ["CONVERTING", "MIXING"]:
+                if not history.started_at:
+                    history.started_at = datetime.utcnow()
+            if status in ["SUCCESS", "FAILURE"]:
+                history.finished_at = datetime.utcnow()
+                if history.started_at:
+                    sec = (history.finished_at - history.started_at).total_seconds()
+                    history.duration_seconds = sec
+                    history.cost_deducted = sec * 0.5
+            if error_text:
+                history.error_text = error_text
+            if output_url:
+                history.output_url = output_url
+            db.commit()
+    except Exception as e:
+        print(f"Error updating DB: {e}")
+    finally:
+        db.close()
+
+def is_safe_url(url: str) -> bool:
+    try:
+        parsed = urlparse(url)
+        if parsed.scheme not in ["http", "https"]: return False
+        host = parsed.hostname
+        if not host: return False
+        # Bloquear metadados em nuvem e localhost hardcoded
+        if host in ["169.254.169.254", "localhost", "127.0.0.1", "0.0.0.0"]:
+            return False
+        return True
+    except:
+        return False
+
 def download_file(url: str, dest_path: str):
+    if not is_safe_url(url) and (url.startswith("http://") or url.startswith("https://")):
+        raise ValueError(f"SSRF Security: Host bloqueado para download ({url})")
+    
     if url.startswith("http://") or url.startswith("https://"):
         req = urllib.request.Request(url, headers={'User-Agent': 'Voci-Studio/1.0'})
         with urllib.request.urlopen(req, timeout=30) as response, open(dest_path, 'wb') as out_file:
@@ -70,9 +116,12 @@ def convert_audio_task(self, input_url: str, model_name: str, pitch: int = 0):
     
     try:
         self.update_state(state='DOWNLOADING', meta={'progress': 10})
+        update_task_db(self.request.id, 'DOWNLOADING')
+        
         download_file(input_url, str(input_path))
         
         self.update_state(state='CONVERTING', meta={'progress': 30})
+        update_task_db(self.request.id, 'CONVERTING')
         conv = get_converter()
         
         # Determine model path
@@ -102,6 +151,8 @@ def convert_audio_task(self, input_url: str, model_name: str, pitch: int = 0):
             raise Exception("Conversão falhou (arquivo vazio ou erro no Applio).")
 
         self.update_state(state='UPLOADING', meta={'progress': 90})
+        update_task_db(self.request.id, 'UPLOADING')
+        
         # TODO: Implement upload to S3 here. For now, we simulate returning the local path.
         final_url = f"/static/results/{self.request.id}_output.wav"
         
@@ -112,10 +163,12 @@ def convert_audio_task(self, input_url: str, model_name: str, pitch: int = 0):
         out_path_abs = static_dir / f"{self.request.id}_output.wav"
         shutil.copy(str(output_path), str(out_path_abs))
 
+        update_task_db(self.request.id, 'SUCCESS', output_url=final_url)
         return {"status": "success", "result_url": final_url}
         
     except Exception as e:
         self.update_state(state='FAILURE', meta={'error': str(e)})
+        update_task_db(self.request.id, 'FAILURE', error_text=str(e))
         raise e
     finally:
         # Cleanup
@@ -136,6 +189,7 @@ def mix_audio_task(self, solo_url: str, crowd_urls: list, pause_ms: int = 500, s
     
     try:
         self.update_state(state='DOWNLOADING', meta={'progress': 10})
+        update_task_db(self.request.id, 'DOWNLOADING')
         download_file(solo_url, str(solo_path))
         
         crowd_paths = []
@@ -145,6 +199,7 @@ def mix_audio_task(self, solo_url: str, crowd_urls: list, pause_ms: int = 500, s
             crowd_paths.append(c_path)
             
         self.update_state(state='MIXING', meta={'progress': 50})
+        update_task_db(self.request.id, 'MIXING')
         
         # Process solo with default reverb
         reverb_params = {"room_size": 0.8, "damping": 1.0, "wet_level": 0.15, "dry_level": 0.9}
@@ -162,6 +217,7 @@ def mix_audio_task(self, solo_url: str, crowd_urls: list, pause_ms: int = 500, s
         final_mix.export(str(out_path), format="wav")
 
         self.update_state(state='UPLOADING', meta={'progress': 90})
+        update_task_db(self.request.id, 'UPLOADING')
         
         final_url = f"/static/results/{self.request.id}_mix.wav"
         static_dir = pathlib.Path(os.path.abspath("./static/results"))
@@ -170,10 +226,12 @@ def mix_audio_task(self, solo_url: str, crowd_urls: list, pause_ms: int = 500, s
         out_path_abs = static_dir / f"{self.request.id}_mix.wav"
         shutil.copy(str(out_path), str(out_path_abs))
 
+        update_task_db(self.request.id, 'SUCCESS', output_url=final_url)
         return {"status": "success", "result_url": final_url}
         
     except Exception as e:
         self.update_state(state='FAILURE', meta={'error': str(e)})
+        update_task_db(self.request.id, 'FAILURE', error_text=str(e))
         raise e
     finally:
         if temp_dir.exists():

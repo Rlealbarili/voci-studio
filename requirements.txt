@@ -28,3 +28,5 @@ ffmpeg-python
 
 # WebUI (Applio)
 gradio==6.5.1
+tensorboard
+alembic
