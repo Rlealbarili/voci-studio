@@ -24,7 +24,13 @@ celery_app.conf.update(
     result_serializer="json",
     timezone="UTC",
     enable_utc=True,
-    worker_prefetch_multiplier=1, # 1 task per worker at a time for GPU
+    worker_prefetch_multiplier=1,
+    worker_max_tasks_per_child=5,
+    task_acks_late=True,
+    task_reject_on_worker_lost=True,
+    result_expires=86400,
+    task_time_limit=1800,
+    task_soft_time_limit=1500
 )
 
 # Initialize the converter globally per worker process
@@ -38,11 +44,17 @@ def get_converter():
 
 def download_file(url: str, dest_path: str):
     if url.startswith("http://") or url.startswith("https://"):
-        urllib.request.urlretrieve(url, dest_path)
+        req = urllib.request.Request(url, headers={'User-Agent': 'Voci-Studio/1.0'})
+        with urllib.request.urlopen(req, timeout=30) as response, open(dest_path, 'wb') as out_file:
+            import shutil
+            shutil.copyfileobj(response, out_file)
     else:
-        # Assume it's a local path or already mounted
+        # Prevent Path traversal
+        safe_path = os.path.abspath(url)
+        if not safe_path.startswith('/tmp/'): # Fallback para segurança de inputs locais da propria api
+             raise ValueError("Path not allowed.")
         import shutil
-        shutil.copy(url, dest_path)
+        shutil.copy(safe_path, dest_path)
 
 @celery_app.task(bind=True)
 def convert_audio_task(self, input_url: str, model_name: str, pitch: int = 0):
@@ -64,6 +76,7 @@ def convert_audio_task(self, input_url: str, model_name: str, pitch: int = 0):
         conv = get_converter()
         
         # Determine model path
+        model_name = os.path.basename(model_name) # Saneamento SSRF / Traversal
         models_dir_env = os.environ.get("MODELS_DIR", "./models")
         models_dir = pathlib.Path(models_dir_env)
         from core.converter import find_model_files
@@ -93,10 +106,11 @@ def convert_audio_task(self, input_url: str, model_name: str, pitch: int = 0):
         final_url = f"/static/results/{self.request.id}_output.wav"
         
         # Simulate moving to a static dir accessible by API
-        static_dir = pathlib.Path("./static/results")
+        static_dir = pathlib.Path(os.path.abspath("./static/results"))
         static_dir.mkdir(parents=True, exist_ok=True)
         import shutil
-        shutil.copy(str(output_path), str(static_dir / f"{self.request.id}_output.wav"))
+        out_path_abs = static_dir / f"{self.request.id}_output.wav"
+        shutil.copy(str(output_path), str(out_path_abs))
 
         return {"status": "success", "result_url": final_url}
         
@@ -150,10 +164,11 @@ def mix_audio_task(self, solo_url: str, crowd_urls: list, pause_ms: int = 500, s
         self.update_state(state='UPLOADING', meta={'progress': 90})
         
         final_url = f"/static/results/{self.request.id}_mix.wav"
-        static_dir = pathlib.Path("./static/results")
+        static_dir = pathlib.Path(os.path.abspath("./static/results"))
         static_dir.mkdir(parents=True, exist_ok=True)
         import shutil
-        shutil.copy(str(out_path), str(static_dir / f"{self.request.id}_mix.wav"))
+        out_path_abs = static_dir / f"{self.request.id}_mix.wav"
+        shutil.copy(str(out_path), str(out_path_abs))
 
         return {"status": "success", "result_url": final_url}
         

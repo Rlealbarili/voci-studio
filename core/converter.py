@@ -30,14 +30,21 @@ class VoiceConverter:
         self._setup()
 
     def _setup(self):
-        """Configura sys.path e importa run_infer_script do Applio."""
-        applio_str = str(self.applio_dir)
-        if applio_str not in sys.path:
-            sys.path.insert(0, applio_str)
-        os.chdir(self.applio_dir)
+        """Configura importlib do Applio evitando os.chdir que quebra caminhos relativos."""
+        import importlib.util
+        applio_core_path = self.applio_dir / "core.py"
+        if not applio_core_path.exists():
+            raise FileNotFoundError(f"Applio core.py não encontrado em {applio_core_path}")
 
-        from core import run_infer_script  # Applio's core.py
-        self._infer_fn = run_infer_script
+        # O Applio precisa estar no path para seus próprios imports internos
+        if str(self.applio_dir) not in sys.path:
+            sys.path.insert(0, str(self.applio_dir))
+
+        spec = importlib.util.spec_from_file_location("applio_core", applio_core_path)
+        applio_core = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(applio_core)
+        
+        self._infer_fn = applio_core.run_infer_script
 
     def convert(
         self,

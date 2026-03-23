@@ -1,4 +1,6 @@
 #!/bin/bash
+set -euo pipefail
+trap 'kill 0' EXIT
 # start_workers.sh - Orquestração do SaaS Voci-Studio
 # Inicia 2 Celery Workers (cada um preso a uma GPU) e a API Uvicorn.
 
@@ -36,7 +38,6 @@ echo "Worker 2 PID: $WORKER2_PID"
 echo "API Server PID: $API_PID"
 
 echo "Use 'tail -f logs/*.log' para monitorar."
-echo "Para parar os serviços, execute: kill $WORKER1_PID $WORKER2_PID $API_PID"
+echo "Para parar os serviços, aperte CTRL+C."
 
-# Aguardando para manter o shell script rodando na foreground (opcional)
-wait $API_PID
+wait -n

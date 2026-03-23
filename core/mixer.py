@@ -83,6 +83,10 @@ def compose(
         AudioSegment com a composição completa.
     """
     base = solo_seg + AudioSegment.silent(duration=pause_ms, frame_rate=output_sr)
+    
+    if not crowd_segs:
+        return base
+
     crowd_start = len(base)
 
     # Pré-calcular duração total para evitar truncamento no overlay
