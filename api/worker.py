@@ -63,8 +63,9 @@ def convert_audio_task(self, input_url: str, model_name: str, pitch: int = 0):
         self.update_state(state='CONVERTING', meta={'progress': 30})
         conv = get_converter()
         
-        # Determine model path (pseudo-code, you need to point to your models directory)
-        models_dir = pathlib.Path("./models")
+        # Determine model path
+        models_dir_env = os.environ.get("MODELS_DIR", "./models")
+        models_dir = pathlib.Path(models_dir_env)
         from core.converter import find_model_files
         try:
             model_pth, model_index = find_model_files(models_dir, model_name)
