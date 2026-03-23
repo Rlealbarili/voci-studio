@@ -11,10 +11,10 @@ if [ -z "$VIRTUAL_ENV" ]; then
     source venv/bin/activate
 fi
 
-# Cria o arquivo de logs e limpa temporários estragados de boots passados
+# Cria o arquivo de logs e limpa temporários envelhecidos (evitando deletar tasks ativas em restart quente)
 mkdir -p logs
 mkdir -p static/results
-rm -rf /tmp/voci_tasks/* 2>/dev/null || true
+find /tmp/voci_tasks -mindepth 1 -maxdepth 1 -type d -mmin +60 -exec rm -rf {} + 2>/dev/null || true
 
 # Inicia o Redis local (caso seja necessário o comando background do SO via Docker ou sudo service)
 # Nota: Configurado no prompt para assumir Redis na mesma máquina.

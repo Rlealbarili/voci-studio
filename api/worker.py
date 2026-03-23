@@ -3,6 +3,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 import time
+import socket
+import ipaddress
 import urllib.request
 from urllib.parse import urlparse
 from datetime import datetime
@@ -72,14 +74,26 @@ def update_task_db(task_id: str, status: str, error_text: str = None, output_url
     finally:
         db.close()
 
+class NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        if not is_safe_url(newurl):
+            raise ValueError(f"SSRF Security: Redirecionamento bloqueado ({newurl})")
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
 def is_safe_url(url: str) -> bool:
     try:
         parsed = urlparse(url)
         if parsed.scheme not in ["http", "https"]: return False
         host = parsed.hostname
         if not host: return False
-        # Bloquear metadados em nuvem e localhost hardcoded
-        if host in ["169.254.169.254", "localhost", "127.0.0.1", "0.0.0.0"]:
+        
+        try:
+            ip = socket.gethostbyname(host)
+        except socket.gaierror:
+            return False
+            
+        ip_obj = ipaddress.ip_address(ip)
+        if ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local or ip_obj.is_multicast:
             return False
         return True
     except:
@@ -90,8 +104,9 @@ def download_file(url: str, dest_path: str):
         raise ValueError(f"SSRF Security: Host bloqueado para download ({url})")
     
     if url.startswith("http://") or url.startswith("https://"):
+        opener = urllib.request.build_opener(NoRedirectHandler())
         req = urllib.request.Request(url, headers={'User-Agent': 'Voci-Studio/1.0'})
-        with urllib.request.urlopen(req, timeout=30) as response, open(dest_path, 'wb') as out_file:
+        with opener.open(req, timeout=30) as response, open(dest_path, 'wb') as out_file:
             import shutil
             shutil.copyfileobj(response, out_file)
     else:
