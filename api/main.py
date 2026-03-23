@@ -8,8 +8,9 @@ from typing import List, Optional
 from celery.result import AsyncResult
 from api.worker import celery_app, convert_audio_task, mix_audio_task
 from api.database import get_db
+from api.database import get_db
 from api.models import InferenceHistory
-from fastapi import Depends
+from fastapi import Depends, HTTPException
 from sqlalchemy.orm import Session
 import uuid
 
@@ -44,14 +45,21 @@ def convert_audio_endpoint(req: ConvertRequest, db: Session = Depends(get_db)):
     db.add(db_history)
     db.commit()
     
-    task = convert_audio_task.apply_async(
-        task_id=task_id,
-        kwargs={
-            "input_url": req.input_url,
-            "model_name": req.model_name,
-            "pitch": req.pitch
-        }
-    )
+    try:
+        task = convert_audio_task.apply_async(
+            task_id=task_id,
+            kwargs={
+                "input_url": req.input_url,
+                "model_name": req.model_name,
+                "pitch": req.pitch
+            }
+        )
+    except Exception as e:
+        db_history.status = "FAILURE"
+        db_history.error_text = f"Falha de broker Celery: {str(e)}"
+        db.commit()
+        raise HTTPException(status_code=503, detail="Broker de processamento indisponível.")
+        
     return {"message": "Conversão iniciada", "task_id": task_id}
 
 @app.post("/api/v1/mix", status_code=202)
@@ -68,15 +76,22 @@ def mix_audio_endpoint(req: MixRequest, db: Session = Depends(get_db)):
     db.add(db_history)
     db.commit()
     
-    task = mix_audio_task.apply_async(
-        task_id=task_id,
-        kwargs={
-            "solo_url": req.solo_url,
-            "crowd_urls": req.crowd_urls,
-            "pause_ms": req.pause_ms,
-            "stagger_ms": req.stagger_ms
-        }
-    )
+    try:
+        task = mix_audio_task.apply_async(
+            task_id=task_id,
+            kwargs={
+                "solo_url": req.solo_url,
+                "crowd_urls": req.crowd_urls,
+                "pause_ms": req.pause_ms,
+                "stagger_ms": req.stagger_ms
+            }
+        )
+    except Exception as e:
+        db_history.status = "FAILURE"
+        db_history.error_text = f"Falha de broker Celery: {str(e)}"
+        db.commit()
+        raise HTTPException(status_code=503, detail="Broker de processamento indisponível.")
+        
     return {"message": "Mixagem iniciada", "task_id": task_id}
 
 @app.get("/api/v1/status/{task_id}")
