@@ -37,3 +37,8 @@ Thumbs.db
 .vscode/
 .idea/
 *.swp
+
+# Segredos — nunca versionar (Gate 0, 2026-08-19)
+.env
+.env.*
+!.env.example
